@@ -7,6 +7,10 @@
 (define-constant ERR_NO_COLLABORATORS (err u105))
 (define-constant ERR_INVALID_AMOUNT (err u106))
 (define-constant ERR_WITHDRAWAL_FAILED (err u107))
+(define-constant ERR_ESCROW_NOT_FOUND (err u108))
+(define-constant ERR_ESCROW_LOCKED (err u109))
+(define-constant ERR_ESCROW_EXPIRED (err u110))
+(define-constant ESCROW_LOCK_PERIOD u144)
 
 (define-map tracks
   { track-id: uint }
@@ -337,5 +341,94 @@
     (asserts! (<= amount contract-balance) ERR_INSUFFICIENT_FUNDS)
     (try! (as-contract (stx-transfer? amount tx-sender (get creator track))))
     (ok amount)
+  )
+)
+
+
+(define-map escrow-deposits
+  { escrow-id: uint }
+  {
+    track-id: uint,
+    collaborator: principal,
+    amount: uint,
+    deposit-block: uint,
+    release-block: uint,
+    is-released: bool
+  }
+)
+
+(define-data-var next-escrow-id uint u1)
+
+(define-public (create-escrow-deposit (track-id uint) (collaborator principal) (amount uint))
+  (let
+    (
+      (escrow-id (var-get next-escrow-id))
+      (current-block stacks-block-height)
+      (release-block (+ current-block ESCROW_LOCK_PERIOD))
+    )
+    (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+    (map-set escrow-deposits
+      { escrow-id: escrow-id }
+      {
+        track-id: track-id,
+        collaborator: collaborator,
+        amount: amount,
+        deposit-block: current-block,
+        release-block: release-block,
+        is-released: false
+      }
+    )
+    (var-set next-escrow-id (+ escrow-id u1))
+    (ok escrow-id)
+  )
+)
+
+(define-public (withdraw-from-escrow (escrow-id uint))
+  (let
+    (
+      (escrow-data (unwrap! (map-get? escrow-deposits { escrow-id: escrow-id }) ERR_ESCROW_NOT_FOUND))
+      (current-block stacks-block-height)
+    )
+    (asserts! (is-eq tx-sender (get collaborator escrow-data)) ERR_NOT_AUTHORIZED)
+    (asserts! (not (get is-released escrow-data)) ERR_ESCROW_EXPIRED)
+    (asserts! (>= current-block (get release-block escrow-data)) ERR_ESCROW_LOCKED)
+    (try! (as-contract (stx-transfer? (get amount escrow-data) tx-sender (get collaborator escrow-data))))
+    (map-set escrow-deposits
+      { escrow-id: escrow-id }
+      (merge escrow-data { is-released: true })
+    )
+    (ok (get amount escrow-data))
+  )
+)
+
+(define-public (extend-escrow-lock (escrow-id uint) (additional-blocks uint))
+  (let
+    (
+      (escrow-data (unwrap! (map-get? escrow-deposits { escrow-id: escrow-id }) ERR_ESCROW_NOT_FOUND))
+    )
+    (asserts! (is-eq tx-sender (get collaborator escrow-data)) ERR_NOT_AUTHORIZED)
+    (asserts! (not (get is-released escrow-data)) ERR_ESCROW_EXPIRED)
+    (map-set escrow-deposits
+      { escrow-id: escrow-id }
+      (merge escrow-data { release-block: (+ (get release-block escrow-data) additional-blocks) })
+    )
+    (ok true)
+  )
+)
+
+(define-read-only (get-escrow-info (escrow-id uint))
+  (map-get? escrow-deposits { escrow-id: escrow-id })
+)
+
+(define-read-only (check-escrow-status (escrow-id uint))
+  (match (map-get? escrow-deposits { escrow-id: escrow-id })
+    escrow-data (ok {
+      is-locked: (< stacks-block-height (get release-block escrow-data)),
+      blocks-remaining: (if (< stacks-block-height (get release-block escrow-data))
+        (- (get release-block escrow-data) stacks-block-height)
+        u0),
+      is-released: (get is-released escrow-data)
+    })
+    ERR_ESCROW_NOT_FOUND
   )
 )
