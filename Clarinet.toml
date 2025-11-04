@@ -1,0 +1,41 @@
+[project]
+name = 'Music-Collaboration-Smart-Contract'
+description = ''
+authors = []
+telemetry = true
+cache_dir = '.\.cache'
+requirements = []
+[contracts.Music-Collaboration-Smart-Contract]
+path = 'contracts/Music-Collaboration-Smart-Contract.clar'
+clarity_version = 3
+epoch = 3.1
+[contracts.track-licensing]
+path = 'contracts/track-licensing.clar'
+clarity_version = 3
+epoch = 3.1
+[contracts.milestone-rewards]
+path = 'contracts/milestone-rewards.clar'
+clarity_version = 3
+epoch = 3.1
+
+[contracts.royalty-subscriptions]
+path = 'contracts/royalty-subscriptions.clar'
+clarity_version = 3
+epoch = 3.1
+
+[contracts.track-voting]
+path = 'contracts/track-voting.clar'
+clarity_version = 3
+epoch = 3.1
+[repl.analysis]
+passes = ['check_checker']
+
+[repl.analysis.check_checker]
+strict = false
+trusted_sender = false
+trusted_caller = false
+callee_filter = false
+
+[repl.remote_data]
+enabled = false
+api_url = 'https://api.hiro.so'
